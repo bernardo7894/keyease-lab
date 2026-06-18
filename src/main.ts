@@ -11,6 +11,7 @@ import {
 import type { GeneratorSettings, KeydownEventRecord, TrialRecord } from "./types";
 
 const DEFAULT_SETTINGS: GeneratorSettings = {
+  generationMode: "wordLike",
   length: 12,
   includeLowercase: true,
   includeUppercase: true,
@@ -74,6 +75,13 @@ app.innerHTML = `
       <h2 id="settingsTitle">Generation Settings</h2>
       <div class="settings-grid">
         <label>
+          <span>Style</span>
+          <select id="generationModeInput">
+            <option value="wordLike" selected>Word-like</option>
+            <option value="random">Random</option>
+          </select>
+        </label>
+        <label>
           <span>Length</span>
           <input id="lengthInput" type="number" min="1" max="64" value="${DEFAULT_SETTINGS.length}" />
         </label>
@@ -123,6 +131,7 @@ const finishButton = getElement<HTMLButtonElement>("finishButton");
 const exportJsonButton = getElement<HTMLButtonElement>("exportJsonButton");
 const exportCsvButton = getElement<HTMLButtonElement>("exportCsvButton");
 const clearButton = getElement<HTMLButtonElement>("clearButton");
+const generationModeInput = getElement<HTMLSelectElement>("generationModeInput");
 const lengthInput = getElement<HTMLInputElement>("lengthInput");
 const trialCountInput = getElement<HTMLInputElement>("trialCountInput");
 const lowercaseInput = getElement<HTMLInputElement>("lowercaseInput");
@@ -149,6 +158,7 @@ function getElement<T extends HTMLElement>(id: string): T {
 
 function readSettings(): GeneratorSettings {
   return {
+    generationMode: generationModeInput.value === "random" ? "random" : "wordLike",
     length: clampNumber(lengthInput.valueAsNumber, 1, 64),
     includeLowercase: lowercaseInput.checked,
     includeUppercase: uppercaseInput.checked,

@@ -1,3 +1,5 @@
+export type GenerationMode = "wordLike" | "random";
+
 export interface KeydownEventRecord {
   key: string;
   code: string;
@@ -23,6 +25,7 @@ export interface TrialRecord {
 }
 
 export interface GeneratorSettings {
+  generationMode: GenerationMode;
   length: number;
   includeLowercase: boolean;
   includeUppercase: boolean;

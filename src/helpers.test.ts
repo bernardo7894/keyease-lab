@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { csvEscape, levenshteinDistance, trialsToCsv } from "./helpers";
+import { csvEscape, generateWordLikeString, levenshteinDistance, trialsToCsv } from "./helpers";
 import type { TrialRecord } from "./types";
 
 describe("levenshteinDistance", () => {
@@ -55,5 +55,23 @@ describe("trialsToCsv", () => {
     expect(csv.split("\n")).toHaveLength(2);
     expect(csv).toContain("trial-1");
     expect(csv).toContain('"[{""key"":""A""');
+  });
+});
+
+describe("generateWordLikeString", () => {
+  it("keeps the requested length while producing a letter-heavy candidate", () => {
+    const candidate = generateWordLikeString({
+      generationMode: "wordLike",
+      length: 12,
+      includeLowercase: true,
+      includeUppercase: true,
+      includeDigits: true,
+      includeSymbols: false,
+      trialCount: 1,
+    });
+
+    expect(candidate).toHaveLength(12);
+    expect(candidate).toMatch(/[a-zA-Z]/);
+    expect(candidate).toMatch(/\d/);
   });
 });

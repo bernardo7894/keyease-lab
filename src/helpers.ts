@@ -5,6 +5,36 @@ const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const DIGITS = "0123456789";
 const SYMBOLS = "!@#$%^&*()-_=+[]{};:,.?/|~";
 const STORAGE_KEY = "keyease-lab-trials-v1";
+const ONSETS = [
+  "b",
+  "br",
+  "c",
+  "ch",
+  "d",
+  "dr",
+  "f",
+  "g",
+  "gr",
+  "h",
+  "j",
+  "k",
+  "l",
+  "m",
+  "n",
+  "p",
+  "pr",
+  "qu",
+  "r",
+  "s",
+  "sh",
+  "t",
+  "tr",
+  "v",
+  "w",
+  "z",
+];
+const VOWELS = ["a", "e", "i", "o", "u", "ai", "ee", "oa"];
+const CODAS = ["", "", "", "b", "d", "g", "k", "l", "m", "n", "p", "r", "s", "t"];
 
 export function buildAlphabet(settings: GeneratorSettings): string {
   let alphabet = "";
@@ -29,7 +59,79 @@ export function generateTargets(settings: GeneratorSettings): string[] {
   const alphabet = buildAlphabet(settings);
   const count = Math.max(1, Math.floor(settings.trialCount));
 
-  return Array.from({ length: count }, () => generateRandomString(settings.length, alphabet));
+  return Array.from({ length: count }, () =>
+    settings.generationMode === "wordLike"
+      ? generateWordLikeString(settings)
+      : generateRandomString(settings.length, alphabet),
+  );
+}
+
+export function generateWordLikeString(settings: GeneratorSettings): string {
+  const hasLetters = settings.includeLowercase || settings.includeUppercase;
+
+  if (!hasLetters) {
+    return generateRandomString(settings.length, buildAlphabet(settings));
+  }
+
+  const safeLength = Math.max(1, Math.floor(settings.length));
+  const symbolCount = settings.includeSymbols && safeLength > 4 ? 1 : 0;
+  const digitCount = settings.includeDigits && safeLength > 3 ? Math.min(2, Math.max(1, Math.floor(safeLength / 6))) : 0;
+  const coreLength = Math.max(1, safeLength - symbolCount - digitCount);
+  const core = applyLetterCase(generateWordCore(coreLength), settings);
+  const digits = digitCount > 0 ? generateRandomString(digitCount, DIGITS) : "";
+  const symbols = symbolCount > 0 ? generateRandomString(symbolCount, SYMBOLS) : "";
+
+  return `${core}${digits}${symbols}`.slice(0, safeLength);
+}
+
+function generateWordCore(length: number): string {
+  let result = "";
+
+  while (result.length < length) {
+    result += randomItem(ONSETS) + randomItem(VOWELS) + randomItem(CODAS);
+  }
+
+  return result.slice(0, length);
+}
+
+function applyLetterCase(value: string, settings: GeneratorSettings): string {
+  if (settings.includeUppercase && !settings.includeLowercase) {
+    return value.toUpperCase();
+  }
+
+  if (!settings.includeUppercase) {
+    return value.toLowerCase();
+  }
+
+  const characters = value.toLowerCase().split("");
+  const uppercaseCount = Math.min(Math.max(1, Math.floor(characters.length / 5)), 3);
+
+  for (const index of uniqueRandomIndices(characters.length, uppercaseCount)) {
+    characters[index] = characters[index].toUpperCase();
+  }
+
+  return characters.join("");
+}
+
+function randomItem(items: string[]): string {
+  return items[randomInteger(items.length)];
+}
+
+function randomInteger(exclusiveMax: number): number {
+  const value = new Uint32Array(1);
+  crypto.getRandomValues(value);
+
+  return value[0] % exclusiveMax;
+}
+
+function uniqueRandomIndices(length: number, count: number): number[] {
+  const indices = new Set<number>();
+
+  while (indices.size < count && indices.size < length) {
+    indices.add(randomInteger(length));
+  }
+
+  return [...indices];
 }
 
 export function levenshteinDistance(left: string, right: string): number {
