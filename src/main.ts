@@ -186,7 +186,8 @@ function setActiveTarget(target: string): void {
     keydownEvents: [],
   };
   typingInput.value = "";
-  targetText.textContent = target;
+  targetText.classList.add("is-active");
+  targetText.innerHTML = renderTarget(target);
 }
 
 function skipString(): void {
@@ -267,6 +268,7 @@ function moveToNextTarget(): void {
     typingInput.disabled = true;
     skipButton.disabled = true;
     finishButton.disabled = true;
+    targetText.classList.remove("is-active");
     targetText.textContent = "Session complete. Export your data or start another session.";
     render();
     return;
@@ -330,6 +332,45 @@ function render(): void {
   backspaceStat.textContent = String(activeTrial?.backspaceCount ?? 0);
   lastDurationStat.textContent = lastTrial ? `${lastTrial.durationMs} ms` : "None";
   lastDistanceStat.textContent = lastTrial ? String(lastTrial.editDistance) : "None";
+}
+
+function renderTarget(target: string): string {
+  return Array.from(target)
+    .map((character) => {
+      const hint = getCharacterHint(character);
+      const hintMarkup = hint ? `<span class="char-hint">${hint}</span>` : "";
+
+      return `
+        <span class="target-char${hint ? " is-ambiguous" : ""}" aria-label="${getCharacterLabel(character)}">
+          <span class="char-value">${escapeHtml(character)}</span>
+          ${hintMarkup}
+        </span>
+      `;
+    })
+    .join("");
+}
+
+function getCharacterHint(character: string): string {
+  if (character === "0") return "zero";
+  if (character === "O") return "cap O";
+  if (character === "o") return "low o";
+
+  return "";
+}
+
+function getCharacterLabel(character: string): string {
+  const hint = getCharacterHint(character);
+
+  return hint ? `${hint}: ${character}` : character;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 startButton.addEventListener("click", startSession);
