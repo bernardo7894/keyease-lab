@@ -1,4 +1,4 @@
-export type GenerationMode = "wordLike" | "random";
+export type GenerationMode = "easyWord" | "wordLike" | "random";
 
 export interface KeydownEventRecord {
   key: string;

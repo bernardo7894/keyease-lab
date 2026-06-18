@@ -60,10 +60,24 @@ export function generateTargets(settings: GeneratorSettings): string[] {
   const count = Math.max(1, Math.floor(settings.trialCount));
 
   return Array.from({ length: count }, () =>
-    settings.generationMode === "wordLike"
-      ? generateWordLikeString(settings)
-      : generateRandomString(settings.length, alphabet),
+    settings.generationMode === "easyWord"
+      ? generateEasyWordString(settings)
+      : settings.generationMode === "wordLike"
+        ? generateWordLikeString(settings)
+        : generateRandomString(settings.length, alphabet),
   );
+}
+
+export function generateEasyWordString(settings: GeneratorSettings): string {
+  const safeLength = Math.max(1, Math.floor(settings.length));
+  const digitCount = settings.includeDigits && safeLength > 3 ? Math.min(2, Math.max(1, Math.floor(safeLength / 6))) : 0;
+  const symbolCount = settings.includeSymbols && safeLength - digitCount > 4 ? 1 : 0;
+  const coreLength = Math.max(1, safeLength - digitCount - symbolCount);
+  const core = generateWordCore(coreLength);
+  const digits = digitCount > 0 ? generateRandomString(digitCount, DIGITS) : "";
+  const symbols = symbolCount > 0 ? generateRandomString(symbolCount, SYMBOLS) : "";
+
+  return `${core}${digits}${symbols}`.slice(0, safeLength);
 }
 
 export function generateWordLikeString(settings: GeneratorSettings): string {

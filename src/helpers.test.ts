@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { csvEscape, generateWordLikeString, levenshteinDistance, trialsToCsv } from "./helpers";
+import { csvEscape, generateEasyWordString, generateWordLikeString, levenshteinDistance, trialsToCsv } from "./helpers";
 import type { TrialRecord } from "./types";
 
 describe("levenshteinDistance", () => {
@@ -73,5 +73,22 @@ describe("generateWordLikeString", () => {
     expect(candidate).toHaveLength(12);
     expect(candidate).toMatch(/[a-zA-Z]/);
     expect(candidate).toMatch(/\d/);
+  });
+});
+
+describe("generateEasyWordString", () => {
+  it("keeps candidates lowercase with trailing digits when digits are enabled", () => {
+    const candidate = generateEasyWordString({
+      generationMode: "easyWord",
+      length: 12,
+      includeLowercase: true,
+      includeUppercase: false,
+      includeDigits: true,
+      includeSymbols: false,
+      trialCount: 1,
+    });
+
+    expect(candidate).toHaveLength(12);
+    expect(candidate).toMatch(/^[a-z]+\d{2}$/);
   });
 });

@@ -11,10 +11,10 @@ import {
 import type { GeneratorSettings, KeydownEventRecord, TrialRecord } from "./types";
 
 const DEFAULT_SETTINGS: GeneratorSettings = {
-  generationMode: "wordLike",
+  generationMode: "easyWord",
   length: 12,
   includeLowercase: true,
-  includeUppercase: true,
+  includeUppercase: false,
   includeDigits: true,
   includeSymbols: false,
   trialCount: 20,
@@ -77,7 +77,8 @@ app.innerHTML = `
         <label>
           <span>Style</span>
           <select id="generationModeInput">
-            <option value="wordLike" selected>Word-like</option>
+            <option value="easyWord" selected>Easy word + digits</option>
+            <option value="wordLike">Word-like mixed case</option>
             <option value="random">Random</option>
           </select>
         </label>
@@ -94,7 +95,7 @@ app.innerHTML = `
           <span>Lowercase</span>
         </label>
         <label class="check">
-          <input id="uppercaseInput" type="checkbox" checked />
+          <input id="uppercaseInput" type="checkbox" />
           <span>Uppercase</span>
         </label>
         <label class="check">
@@ -158,7 +159,7 @@ function getElement<T extends HTMLElement>(id: string): T {
 
 function readSettings(): GeneratorSettings {
   return {
-    generationMode: generationModeInput.value === "random" ? "random" : "wordLike",
+    generationMode: getGenerationMode(),
     length: clampNumber(lengthInput.valueAsNumber, 1, 64),
     includeLowercase: lowercaseInput.checked,
     includeUppercase: uppercaseInput.checked,
@@ -166,6 +167,18 @@ function readSettings(): GeneratorSettings {
     includeSymbols: symbolsInput.checked,
     trialCount: clampNumber(trialCountInput.valueAsNumber, 1, 500),
   };
+}
+
+function getGenerationMode(): GeneratorSettings["generationMode"] {
+  if (generationModeInput.value === "random") {
+    return "random";
+  }
+
+  if (generationModeInput.value === "wordLike") {
+    return "wordLike";
+  }
+
+  return "easyWord";
 }
 
 function clampNumber(value: number, min: number, max: number): number {
