@@ -4,6 +4,8 @@ const LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
 const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const DIGITS = "0123456789";
 const SYMBOLS = "!@#$%^&*()-_=+[]{};:,.?/|~";
+const EASY_DIGITS = "111222333000456789";
+const EASY_SYMBOLS = "#$@'";
 const STORAGE_KEY = "keyease-lab-trials-v1";
 const ONSETS = [
   "b",
@@ -74,8 +76,8 @@ export function generateEasyWordString(settings: GeneratorSettings): string {
   const symbolCount = settings.includeSymbols && safeLength - digitCount > 4 ? 1 : 0;
   const coreLength = Math.max(1, safeLength - digitCount - symbolCount);
   const core = generateWordCore(coreLength);
-  const digits = digitCount > 0 ? generateRandomString(digitCount, DIGITS) : "";
-  const symbols = symbolCount > 0 ? generateRandomString(symbolCount, SYMBOLS) : "";
+  const digits = digitCount > 0 ? generateRandomString(digitCount, EASY_DIGITS) : "";
+  const symbols = symbolCount > 0 ? generateRandomString(symbolCount, EASY_SYMBOLS) : "";
 
   return `${core}${digits}${symbols}`.slice(0, safeLength);
 }

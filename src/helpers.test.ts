@@ -91,4 +91,19 @@ describe("generateEasyWordString", () => {
     expect(candidate).toHaveLength(12);
     expect(candidate).toMatch(/^[a-z]+\d{2}$/);
   });
+
+  it("uses only easy symbols when symbols are enabled", () => {
+    const candidate = generateEasyWordString({
+      generationMode: "easyWord",
+      length: 12,
+      includeLowercase: true,
+      includeUppercase: false,
+      includeDigits: true,
+      includeSymbols: true,
+      trialCount: 1,
+    });
+
+    expect(candidate).toHaveLength(12);
+    expect(candidate).toMatch(/^[a-z]+\d{2}[#$@']$/);
+  });
 });
