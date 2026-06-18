@@ -106,4 +106,19 @@ describe("generateEasyWordString", () => {
     expect(candidate).toHaveLength(12);
     expect(candidate).toMatch(/^[a-z]+\d{2}[#$@']$/);
   });
+
+  it("uses a single leading uppercase letter when uppercase is enabled", () => {
+    const candidate = generateEasyWordString({
+      generationMode: "easyWord",
+      length: 12,
+      includeLowercase: true,
+      includeUppercase: true,
+      includeDigits: true,
+      includeSymbols: false,
+      trialCount: 1,
+    });
+
+    expect(candidate).toHaveLength(12);
+    expect(candidate).toMatch(/^[A-Z][a-z]+\d{2}$/);
+  });
 });

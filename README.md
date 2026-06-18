@@ -9,7 +9,7 @@ It is for generated test strings only. Do not type real passwords.
 - No backend, database, login, telemetry, analytics, or external API.
 - No real password manager behavior.
 - Candidate strings are generated locally with `crypto.getRandomValues`.
-- The default generator creates lowercase word-like strings with trailing digits for easier typing, with mixed-case word-like and random modes available for comparison.
+- The default generator creates word-like strings with trailing digits for easier typing. If uppercase is enabled in easy mode, it uses one leading capital letter to satisfy common password rules with minimal typing cost. Mixed-case word-like and random modes are available for comparison.
 - Trial data stays in browser `localStorage` until you export it or clear it.
 - The app does not intentionally make network requests.
 

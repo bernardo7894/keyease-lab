@@ -75,11 +75,19 @@ export function generateEasyWordString(settings: GeneratorSettings): string {
   const digitCount = settings.includeDigits && safeLength > 3 ? Math.min(2, Math.max(1, Math.floor(safeLength / 6))) : 0;
   const symbolCount = settings.includeSymbols && safeLength - digitCount > 4 ? 1 : 0;
   const coreLength = Math.max(1, safeLength - digitCount - symbolCount);
-  const core = generateWordCore(coreLength);
+  const core = applyEasyUppercase(generateWordCore(coreLength), settings);
   const digits = digitCount > 0 ? generateRandomString(digitCount, EASY_DIGITS) : "";
   const symbols = symbolCount > 0 ? generateRandomString(symbolCount, EASY_SYMBOLS) : "";
 
   return `${core}${digits}${symbols}`.slice(0, safeLength);
+}
+
+function applyEasyUppercase(value: string, settings: GeneratorSettings): string {
+  if (!settings.includeUppercase || value.length === 0) {
+    return value;
+  }
+
+  return `${value[0].toUpperCase()}${value.slice(1).toLowerCase()}`;
 }
 
 export function generateWordLikeString(settings: GeneratorSettings): string {
