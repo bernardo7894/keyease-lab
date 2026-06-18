@@ -135,7 +135,7 @@ dt {
 .target {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 3px;
   align-items: center;
   min-height: 86px;
   margin-top: 8px;
@@ -158,11 +158,11 @@ dt {
 .target-char {
   display: inline-grid;
   place-items: center;
-  min-width: 1.35em;
+  min-width: 1.08em;
   min-height: 1.55em;
   border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 2px 5px 4px;
+  border-radius: 6px;
+  padding: 2px 2px 4px;
   line-height: 1;
 }
 
