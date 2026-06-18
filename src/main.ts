@@ -1,17 +1,20 @@
 import "./style.css";
 import {
   clearTrials,
+  computeTargetFeatures,
   downloadFile,
   generateTargets,
   levenshteinDistance,
   loadTrials,
+  median,
   saveTrials,
   trialsToCsv,
 } from "./helpers";
-import type { GeneratorSettings, KeydownEventRecord, TrialRecord } from "./types";
+import type { CharacterMode, GeneratorSettings, KeydownEventRecord, TrialRecord } from "./types";
 
 const DEFAULT_SETTINGS: GeneratorSettings = {
   generationMode: "easyWord",
+  characterMode: "lowercase_digits",
   length: 12,
   includeLowercase: true,
   includeUppercase: false,
@@ -31,8 +34,10 @@ let settings: GeneratorSettings = { ...DEFAULT_SETTINGS };
 let targets: string[] = [];
 let targetIndex = 0;
 let completedTrials: TrialRecord[] = loadTrials();
+let currentSessionTrials: TrialRecord[] = [];
 let activeTrial: ActiveTrial | null = null;
 let lastTrial: TrialRecord | null = completedTrials.at(-1) ?? null;
+let pendingRatingTrialId: string | null = null;
 let elapsedTimer: number | undefined;
 
 const app = document.querySelector<HTMLDivElement>("#app");
@@ -83,6 +88,16 @@ app.innerHTML = `
           </select>
         </label>
         <label>
+          <span>Character mode</span>
+          <select id="characterModeInput">
+            <option value="lowercase">Lowercase</option>
+            <option value="lowercase_digits" selected>Lowercase + digits</option>
+            <option value="mixed_case">Mixed case</option>
+            <option value="mixed_case_digits">Mixed case + digits</option>
+            <option value="mixed_case_digits_symbols">Mixed case + digits + symbols</option>
+          </select>
+        </label>
+        <label>
           <span>Length</span>
           <input id="lengthInput" type="number" min="1" max="64" value="${DEFAULT_SETTINGS.length}" />
         </label>
@@ -90,22 +105,19 @@ app.innerHTML = `
           <span>Trials</span>
           <input id="trialCountInput" type="number" min="1" max="500" value="${DEFAULT_SETTINGS.trialCount}" />
         </label>
-        <label class="check">
-          <input id="lowercaseInput" type="checkbox" checked />
-          <span>Lowercase</span>
-        </label>
-        <label class="check">
-          <input id="uppercaseInput" type="checkbox" />
-          <span>Uppercase</span>
-        </label>
-        <label class="check">
-          <input id="digitsInput" type="checkbox" checked />
-          <span>Digits</span>
-        </label>
-        <label class="check">
-          <input id="symbolsInput" type="checkbox" />
-          <span>Symbols</span>
-        </label>
+      </div>
+    </section>
+
+    <section class="rating-panel" id="ratingPanel" aria-labelledby="ratingTitle" hidden>
+      <h2 id="ratingTitle">Post-trial rating</h2>
+      <p>How annoying was this string to type?</p>
+      <div class="rating-row" aria-label="Subjective difficulty">
+        <button type="button" data-rating="1">1</button>
+        <button type="button" data-rating="2">2</button>
+        <button type="button" data-rating="3">3</button>
+        <button type="button" data-rating="4">4</button>
+        <button type="button" data-rating="5">5</button>
+        <button id="skipRatingButton" type="button">Skip</button>
       </div>
     </section>
 
@@ -121,6 +133,29 @@ app.innerHTML = `
         <div><dt>Last edit distance</dt><dd id="lastDistanceStat">None</dd></div>
       </dl>
     </section>
+
+    <section class="dashboard" aria-labelledby="dashboardTitle">
+      <h2 id="dashboardTitle">Dashboard</h2>
+      <dl class="stats-grid">
+        <div><dt>Median duration</dt><dd id="dashboardMedian">None</dd></div>
+        <div><dt>Success rate</dt><dd id="dashboardSuccess">None</dd></div>
+        <div><dt>Avg backspaces</dt><dd id="dashboardBackspaces">None</dd></div>
+      </dl>
+      <div class="dashboard-grid">
+        <section>
+          <h3>Slowest 5 targets</h3>
+          <ol id="slowestTargets"></ol>
+        </section>
+        <section>
+          <h3>Most error-prone 5 targets</h3>
+          <ol id="errorProneTargets"></ol>
+        </section>
+        <section>
+          <h3>Average duration by characterMode</h3>
+          <ol id="durationByMode"></ol>
+        </section>
+      </div>
+    </section>
   </main>
 `;
 
@@ -133,12 +168,11 @@ const exportJsonButton = getElement<HTMLButtonElement>("exportJsonButton");
 const exportCsvButton = getElement<HTMLButtonElement>("exportCsvButton");
 const clearButton = getElement<HTMLButtonElement>("clearButton");
 const generationModeInput = getElement<HTMLSelectElement>("generationModeInput");
+const characterModeInput = getElement<HTMLSelectElement>("characterModeInput");
 const lengthInput = getElement<HTMLInputElement>("lengthInput");
 const trialCountInput = getElement<HTMLInputElement>("trialCountInput");
-const lowercaseInput = getElement<HTMLInputElement>("lowercaseInput");
-const uppercaseInput = getElement<HTMLInputElement>("uppercaseInput");
-const digitsInput = getElement<HTMLInputElement>("digitsInput");
-const symbolsInput = getElement<HTMLInputElement>("symbolsInput");
+const ratingPanel = getElement<HTMLElement>("ratingPanel");
+const skipRatingButton = getElement<HTMLButtonElement>("skipRatingButton");
 const currentTrialStat = getElement<HTMLElement>("currentTrialStat");
 const completedStat = getElement<HTMLElement>("completedStat");
 const elapsedStat = getElement<HTMLElement>("elapsedStat");
@@ -146,6 +180,12 @@ const matchStat = getElement<HTMLElement>("matchStat");
 const backspaceStat = getElement<HTMLElement>("backspaceStat");
 const lastDurationStat = getElement<HTMLElement>("lastDurationStat");
 const lastDistanceStat = getElement<HTMLElement>("lastDistanceStat");
+const dashboardMedian = getElement<HTMLElement>("dashboardMedian");
+const dashboardSuccess = getElement<HTMLElement>("dashboardSuccess");
+const dashboardBackspaces = getElement<HTMLElement>("dashboardBackspaces");
+const slowestTargets = getElement<HTMLOListElement>("slowestTargets");
+const errorProneTargets = getElement<HTMLOListElement>("errorProneTargets");
+const durationByMode = getElement<HTMLOListElement>("durationByMode");
 
 function getElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -158,14 +198,52 @@ function getElement<T extends HTMLElement>(id: string): T {
 }
 
 function readSettings(): GeneratorSettings {
+  const characterMode = getCharacterMode();
+  const characterModeFlags = getCharacterModeFlags(characterMode);
+
   return {
     generationMode: getGenerationMode(),
+    characterMode,
     length: clampNumber(lengthInput.valueAsNumber, 1, 64),
-    includeLowercase: lowercaseInput.checked,
-    includeUppercase: uppercaseInput.checked,
-    includeDigits: digitsInput.checked,
-    includeSymbols: symbolsInput.checked,
+    includeLowercase: characterModeFlags.includeLowercase,
+    includeUppercase: characterModeFlags.includeUppercase,
+    includeDigits: characterModeFlags.includeDigits,
+    includeSymbols: characterModeFlags.includeSymbols,
     trialCount: clampNumber(trialCountInput.valueAsNumber, 1, 500),
+  };
+}
+
+function getCharacterMode(): CharacterMode {
+  const value = characterModeInput.value;
+
+  if (
+    value === "lowercase" ||
+    value === "lowercase_digits" ||
+    value === "mixed_case" ||
+    value === "mixed_case_digits" ||
+    value === "mixed_case_digits_symbols"
+  ) {
+    return value;
+  }
+
+  return "lowercase_digits";
+}
+
+function getCharacterModeFlags(characterMode: CharacterMode): Pick<
+  GeneratorSettings,
+  "includeLowercase" | "includeUppercase" | "includeDigits" | "includeSymbols"
+> {
+  return {
+    includeLowercase: true,
+    includeUppercase:
+      characterMode === "mixed_case" ||
+      characterMode === "mixed_case_digits" ||
+      characterMode === "mixed_case_digits_symbols",
+    includeDigits:
+      characterMode === "lowercase_digits" ||
+      characterMode === "mixed_case_digits" ||
+      characterMode === "mixed_case_digits_symbols",
+    includeSymbols: characterMode === "mixed_case_digits_symbols",
   };
 }
 
@@ -192,6 +270,7 @@ function clampNumber(value: number, min: number, max: number): number {
 function startSession(): void {
   settings = readSettings();
   targets = generateTargets(settings);
+  currentSessionTrials = [];
   targetIndex = 0;
   setActiveTarget(targets[targetIndex]);
   typingInput.disabled = false;
@@ -262,21 +341,28 @@ function finishTrial(): void {
   const startedAtEpochMs = activeTrial.startedAtEpochMs ?? endedAtEpochMs;
   const typed = typingInput.value;
   const editDistance = levenshteinDistance(activeTrial.target, typed);
+  const sessionMedianDuration = median(currentSessionTrials.map((trial) => trial.durationMs));
+  const durationMs = endedAtEpochMs - startedAtEpochMs;
   const record: TrialRecord = {
     trialId: crypto.randomUUID(),
+    characterMode: settings.characterMode,
     target: activeTrial.target,
+    targetFeatures: computeTargetFeatures(activeTrial.target),
     typed,
     startedAtEpochMs,
     endedAtEpochMs,
-    durationMs: endedAtEpochMs - startedAtEpochMs,
+    durationMs,
     success: typed === activeTrial.target,
     backspaceCount: activeTrial.backspaceCount,
     editDistance,
+    possiblePause: currentSessionTrials.length >= 3 && sessionMedianDuration > 0 && durationMs > sessionMedianDuration * 3,
     keydownEvents: activeTrial.keydownEvents,
   };
 
   completedTrials = [...completedTrials, record];
+  currentSessionTrials = [...currentSessionTrials, record];
   lastTrial = record;
+  pendingRatingTrialId = record.trialId;
   saveTrials(completedTrials);
   moveToNextTarget();
 }
@@ -334,8 +420,32 @@ function clearLocalData(): void {
   }
 
   completedTrials = [];
+  currentSessionTrials = [];
   lastTrial = null;
+  pendingRatingTrialId = null;
   clearTrials();
+  render();
+}
+
+function ratePendingTrial(rating: number): void {
+  if (!pendingRatingTrialId) {
+    return;
+  }
+
+  completedTrials = completedTrials.map((trial) =>
+    trial.trialId === pendingRatingTrialId ? { ...trial, subjectiveDifficulty: rating } : trial,
+  );
+  currentSessionTrials = currentSessionTrials.map((trial) =>
+    trial.trialId === pendingRatingTrialId ? { ...trial, subjectiveDifficulty: rating } : trial,
+  );
+  lastTrial = completedTrials.at(-1) ?? null;
+  pendingRatingTrialId = null;
+  saveTrials(completedTrials);
+  render();
+}
+
+function skipPendingRating(): void {
+  pendingRatingTrialId = null;
   render();
 }
 
@@ -355,6 +465,60 @@ function render(): void {
   backspaceStat.textContent = String(activeTrial?.backspaceCount ?? 0);
   lastDurationStat.textContent = lastTrial ? `${lastTrial.durationMs} ms` : "None";
   lastDistanceStat.textContent = lastTrial ? String(lastTrial.editDistance) : "None";
+  ratingPanel.hidden = pendingRatingTrialId === null;
+  renderDashboard();
+}
+
+function renderDashboard(): void {
+  const trials = completedTrials;
+  const durations = trials.map((trial) => trial.durationMs);
+  const successCount = trials.filter((trial) => trial.success).length;
+  const backspaceTotal = trials.reduce((total, trial) => total + trial.backspaceCount, 0);
+
+  dashboardMedian.textContent = durations.length ? `${Math.round(median(durations))} ms` : "None";
+  dashboardSuccess.textContent = trials.length ? `${Math.round((successCount / trials.length) * 100)}%` : "None";
+  dashboardBackspaces.textContent = trials.length ? (backspaceTotal / trials.length).toFixed(2) : "None";
+  slowestTargets.innerHTML = renderTrialList([...trials].sort((left, right) => right.durationMs - left.durationMs).slice(0, 5));
+  errorProneTargets.innerHTML = renderTrialList(
+    [...trials]
+      .sort((left, right) => right.editDistance - left.editDistance || right.backspaceCount - left.backspaceCount)
+      .slice(0, 5),
+  );
+  durationByMode.innerHTML = renderDurationByMode(trials);
+}
+
+function renderTrialList(trials: TrialRecord[]): string {
+  if (!trials.length) {
+    return "<li>None</li>";
+  }
+
+  return trials
+    .map(
+      (trial) =>
+        `<li><code>${escapeHtml(trial.target)}</code> <span>${trial.durationMs} ms, ${trial.editDistance} edits, ${trial.backspaceCount} backs</span></li>`,
+    )
+    .join("");
+}
+
+function renderDurationByMode(trials: TrialRecord[]): string {
+  const modes: CharacterMode[] = [
+    "lowercase",
+    "lowercase_digits",
+    "mixed_case",
+    "mixed_case_digits",
+    "mixed_case_digits_symbols",
+  ];
+  const rows = modes
+    .map((mode) => {
+      const modeTrials = trials.filter((trial) => trial.characterMode === mode);
+      const average =
+        modeTrials.reduce((total, trial) => total + trial.durationMs, 0) / Math.max(1, modeTrials.length);
+
+      return modeTrials.length ? `<li><code>${mode}</code> <span>${Math.round(average)} ms</span></li>` : "";
+    })
+    .filter(Boolean);
+
+  return rows.length ? rows.join("") : "<li>None</li>";
 }
 
 function renderTarget(target: string): string {
@@ -402,6 +566,16 @@ finishButton.addEventListener("click", finishTrial);
 exportJsonButton.addEventListener("click", exportJson);
 exportCsvButton.addEventListener("click", exportCsv);
 clearButton.addEventListener("click", clearLocalData);
+skipRatingButton.addEventListener("click", skipPendingRating);
+ratingPanel.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof HTMLButtonElement) || !target.dataset.rating) {
+    return;
+  }
+
+  ratePendingTrial(Number(target.dataset.rating));
+});
 
 typingInput.addEventListener("keydown", (event) => {
   if (!activeTrial) {

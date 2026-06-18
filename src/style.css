@@ -60,9 +60,14 @@ button.danger:hover:not(:disabled) {
 .intro,
 .workspace,
 .settings,
+.rating-panel,
 .stats {
   padding: 24px 0;
   border-bottom: 1px solid #ddd5ca;
+}
+
+.dashboard {
+  padding: 24px 0;
 }
 
 .intro {
@@ -215,6 +220,21 @@ dt {
   gap: 10px;
 }
 
+.rating-panel p {
+  margin-bottom: 12px;
+  color: #3d444d;
+}
+
+.rating-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rating-row button {
+  min-width: 48px;
+}
+
 .settings-grid,
 .stats-grid {
   display: grid;
@@ -259,6 +279,43 @@ dt {
 
 .stats-grid {
   margin-bottom: 0;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.dashboard-grid section {
+  border: 1px solid #d9d1c6;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.dashboard-grid h3 {
+  margin: 0 0 12px;
+  color: #4f555f;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.dashboard-grid ol {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.dashboard-grid li {
+  margin-bottom: 8px;
+  color: #3d444d;
+}
+
+.dashboard-grid code {
+  color: #15171a;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-weight: 800;
 }
 
 dd {

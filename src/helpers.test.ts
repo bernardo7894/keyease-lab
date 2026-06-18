@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { csvEscape, generateEasyWordString, generateWordLikeString, levenshteinDistance, trialsToCsv } from "./helpers";
+import {
+  computeTargetFeatures,
+  csvEscape,
+  generateEasyWordString,
+  generateWordLikeString,
+  levenshteinDistance,
+  median,
+  trialsToCsv,
+} from "./helpers";
 import type { TrialRecord } from "./types";
 
 describe("levenshteinDistance", () => {
@@ -28,7 +36,9 @@ describe("trialsToCsv", () => {
   it("serializes one row per trial", () => {
     const trial: TrialRecord = {
       trialId: "trial-1",
+      characterMode: "mixed_case_digits",
       target: "Abc123",
+      targetFeatures: computeTargetFeatures("Abc123"),
       typed: "Abc12",
       startedAtEpochMs: 100,
       endedAtEpochMs: 250,
@@ -36,6 +46,7 @@ describe("trialsToCsv", () => {
       success: false,
       backspaceCount: 1,
       editDistance: 1,
+      possiblePause: false,
       keydownEvents: [
         {
           key: "A",
@@ -54,7 +65,32 @@ describe("trialsToCsv", () => {
 
     expect(csv.split("\n")).toHaveLength(2);
     expect(csv).toContain("trial-1");
+    expect(csv).toContain("mixed_case_digits");
     expect(csv).toContain('"[{""key"":""A""');
+  });
+});
+
+describe("computeTargetFeatures", () => {
+  it("counts character classes, case transitions, and keyboard estimates", () => {
+    const features = computeTargetFeatures("Abc123#");
+
+    expect(features.length).toBe(7);
+    expect(features.lowercaseCount).toBe(2);
+    expect(features.uppercaseCount).toBe(1);
+    expect(features.digitCount).toBe(3);
+    expect(features.symbolCount).toBe(1);
+    expect(features.caseTransitionCount).toBe(1);
+    expect(features.uppercaseRunCount).toBe(1);
+    expect(features.leftHandCount + features.rightHandCount).toBeGreaterThan(0);
+    expect(features.qwertyTravelDistanceEstimate).toBeGreaterThan(0);
+  });
+});
+
+describe("median", () => {
+  it("handles odd, even, and empty lists", () => {
+    expect(median([3, 1, 2])).toBe(2);
+    expect(median([1, 10, 2, 3])).toBe(2.5);
+    expect(median([])).toBe(0);
   });
 });
 
@@ -62,6 +98,7 @@ describe("generateWordLikeString", () => {
   it("keeps the requested length while producing a letter-heavy candidate", () => {
     const candidate = generateWordLikeString({
       generationMode: "wordLike",
+      characterMode: "mixed_case_digits",
       length: 12,
       includeLowercase: true,
       includeUppercase: true,
@@ -80,6 +117,7 @@ describe("generateEasyWordString", () => {
   it("keeps candidates lowercase with trailing digits when digits are enabled", () => {
     const candidate = generateEasyWordString({
       generationMode: "easyWord",
+      characterMode: "lowercase_digits",
       length: 12,
       includeLowercase: true,
       includeUppercase: false,
@@ -95,6 +133,7 @@ describe("generateEasyWordString", () => {
   it("uses only easy symbols when symbols are enabled", () => {
     const candidate = generateEasyWordString({
       generationMode: "easyWord",
+      characterMode: "mixed_case_digits_symbols",
       length: 12,
       includeLowercase: true,
       includeUppercase: false,
@@ -110,6 +149,7 @@ describe("generateEasyWordString", () => {
   it("uses a single leading uppercase letter when uppercase is enabled", () => {
     const candidate = generateEasyWordString({
       generationMode: "easyWord",
+      characterMode: "mixed_case_digits",
       length: 12,
       includeLowercase: true,
       includeUppercase: true,

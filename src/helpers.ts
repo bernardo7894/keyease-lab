@@ -1,4 +1,4 @@
-import type { GeneratorSettings, TrialRecord } from "./types";
+import type { GeneratorSettings, TargetFeatures, TrialRecord } from "./types";
 
 const LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
 const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -37,6 +37,48 @@ const ONSETS = [
 ];
 const VOWELS = ["a", "e", "i", "o", "u", "ai", "ee", "oa"];
 const CODAS = ["", "", "", "b", "d", "g", "k", "l", "m", "n", "p", "r", "s", "t"];
+const KEY_POSITIONS: Record<string, { x: number; y: number; hand: "left" | "right"; finger: string }> = {
+  q: { x: 0, y: 1, hand: "left", finger: "left-pinky" },
+  w: { x: 1, y: 1, hand: "left", finger: "left-ring" },
+  e: { x: 2, y: 1, hand: "left", finger: "left-middle" },
+  r: { x: 3, y: 1, hand: "left", finger: "left-index" },
+  t: { x: 4, y: 1, hand: "left", finger: "left-index" },
+  y: { x: 5, y: 1, hand: "right", finger: "right-index" },
+  u: { x: 6, y: 1, hand: "right", finger: "right-index" },
+  i: { x: 7, y: 1, hand: "right", finger: "right-middle" },
+  o: { x: 8, y: 1, hand: "right", finger: "right-ring" },
+  p: { x: 9, y: 1, hand: "right", finger: "right-pinky" },
+  a: { x: 0.25, y: 2, hand: "left", finger: "left-pinky" },
+  s: { x: 1.25, y: 2, hand: "left", finger: "left-ring" },
+  d: { x: 2.25, y: 2, hand: "left", finger: "left-middle" },
+  f: { x: 3.25, y: 2, hand: "left", finger: "left-index" },
+  g: { x: 4.25, y: 2, hand: "left", finger: "left-index" },
+  h: { x: 5.25, y: 2, hand: "right", finger: "right-index" },
+  j: { x: 6.25, y: 2, hand: "right", finger: "right-index" },
+  k: { x: 7.25, y: 2, hand: "right", finger: "right-middle" },
+  l: { x: 8.25, y: 2, hand: "right", finger: "right-ring" },
+  z: { x: 0.75, y: 3, hand: "left", finger: "left-pinky" },
+  x: { x: 1.75, y: 3, hand: "left", finger: "left-ring" },
+  c: { x: 2.75, y: 3, hand: "left", finger: "left-middle" },
+  v: { x: 3.75, y: 3, hand: "left", finger: "left-index" },
+  b: { x: 4.75, y: 3, hand: "left", finger: "left-index" },
+  n: { x: 5.75, y: 3, hand: "right", finger: "right-index" },
+  m: { x: 6.75, y: 3, hand: "right", finger: "right-index" },
+  "1": { x: 0, y: 0, hand: "left", finger: "left-pinky" },
+  "2": { x: 1, y: 0, hand: "left", finger: "left-ring" },
+  "3": { x: 2, y: 0, hand: "left", finger: "left-middle" },
+  "4": { x: 3, y: 0, hand: "left", finger: "left-index" },
+  "5": { x: 4, y: 0, hand: "left", finger: "left-index" },
+  "6": { x: 5, y: 0, hand: "right", finger: "right-index" },
+  "7": { x: 6, y: 0, hand: "right", finger: "right-index" },
+  "8": { x: 7, y: 0, hand: "right", finger: "right-middle" },
+  "9": { x: 8, y: 0, hand: "right", finger: "right-ring" },
+  "0": { x: 9, y: 0, hand: "right", finger: "right-pinky" },
+  "#": { x: 3, y: 0, hand: "left", finger: "left-index" },
+  "$": { x: 4, y: 0, hand: "left", finger: "left-index" },
+  "@": { x: 1, y: 0, hand: "left", finger: "left-ring" },
+  "'": { x: 10.25, y: 2, hand: "right", finger: "right-pinky" },
+};
 
 export function buildAlphabet(settings: GeneratorSettings): string {
   let alphabet = "";
@@ -182,6 +224,90 @@ export function levenshteinDistance(left: string, right: string): number {
   return previousRow[right.length];
 }
 
+export function computeTargetFeatures(target: string): TargetFeatures {
+  const characters = Array.from(target);
+  let lowercaseCount = 0;
+  let uppercaseCount = 0;
+  let digitCount = 0;
+  let symbolCount = 0;
+  let caseTransitionCount = 0;
+  let uppercaseRunCount = 0;
+  let sameHandBigramCount = 0;
+  let sameFingerBigramCount = 0;
+  let leftHandCount = 0;
+  let rightHandCount = 0;
+  let qwertyTravelDistanceEstimate = 0;
+  let inUppercaseRun = false;
+
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    const previousCharacter = characters[index - 1];
+    const position = KEY_POSITIONS[character.toLowerCase()];
+
+    if (/[a-z]/.test(character)) lowercaseCount += 1;
+    else if (/[A-Z]/.test(character)) uppercaseCount += 1;
+    else if (/\d/.test(character)) digitCount += 1;
+    else symbolCount += 1;
+
+    if (/[A-Z]/.test(character) && !inUppercaseRun) {
+      uppercaseRunCount += 1;
+      inUppercaseRun = true;
+    } else if (!/[A-Z]/.test(character)) {
+      inUppercaseRun = false;
+    }
+
+    if (position?.hand === "left") leftHandCount += 1;
+    if (position?.hand === "right") rightHandCount += 1;
+
+    if (previousCharacter) {
+      const previousPosition = KEY_POSITIONS[previousCharacter.toLowerCase()];
+
+      if (isLetter(character) && isLetter(previousCharacter) && isUppercase(character) !== isUppercase(previousCharacter)) {
+        caseTransitionCount += 1;
+      }
+
+      if (position && previousPosition) {
+        if (position.hand === previousPosition.hand) sameHandBigramCount += 1;
+        if (position.finger === previousPosition.finger) sameFingerBigramCount += 1;
+        qwertyTravelDistanceEstimate += Math.hypot(position.x - previousPosition.x, position.y - previousPosition.y);
+      }
+    }
+  }
+
+  return {
+    length: characters.length,
+    lowercaseCount,
+    uppercaseCount,
+    digitCount,
+    symbolCount,
+    caseTransitionCount,
+    uppercaseRunCount,
+    sameHandBigramCount,
+    sameFingerBigramCount,
+    leftHandCount,
+    rightHandCount,
+    handImbalance: Math.abs(leftHandCount - rightHandCount),
+    qwertyTravelDistanceEstimate: Number(qwertyTravelDistanceEstimate.toFixed(3)),
+  };
+}
+
+export function median(values: number[]): number {
+  if (!values.length) return 0;
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function isLetter(character: string): boolean {
+  return /[a-z]/i.test(character);
+}
+
+function isUppercase(character: string): boolean {
+  return /[A-Z]/.test(character);
+}
+
 export function csvEscape(value: unknown): string {
   const text = value === null || value === undefined ? "" : String(value);
   const escaped = text.replaceAll('"', '""');
@@ -200,6 +326,10 @@ export function trialsToCsv(trials: TrialRecord[]): string {
     "success",
     "backspaceCount",
     "editDistance",
+    "subjectiveDifficulty",
+    "possiblePause",
+    "characterMode",
+    "targetFeatures",
     "keydownEvents",
   ];
 
@@ -214,6 +344,10 @@ export function trialsToCsv(trials: TrialRecord[]): string {
       trial.success,
       trial.backspaceCount,
       trial.editDistance,
+      trial.subjectiveDifficulty ?? "",
+      trial.possiblePause ?? false,
+      trial.characterMode ?? "",
+      JSON.stringify(trial.targetFeatures ?? {}),
       JSON.stringify(trial.keydownEvents),
     ]
       .map(csvEscape)
