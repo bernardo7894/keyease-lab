@@ -3,12 +3,27 @@ import {
   computeTargetFeatures,
   csvEscape,
   generateEasyWordString,
+  generateTargets,
   generateWordLikeString,
   levenshteinDistance,
   median,
   trialsToCsv,
 } from "./helpers";
-import type { TrialRecord } from "./types";
+import type { GeneratorSettings, TrialRecord } from "./types";
+
+const BASE_SETTINGS: GeneratorSettings = {
+  generationMode: "easyWord",
+  sourceMode: "pseudo_words_digits",
+  characterMode: "lowercase_digits",
+  length: 12,
+  sentenceMaxLength: 36,
+  punctuationEnabled: false,
+  includeLowercase: true,
+  includeUppercase: false,
+  includeDigits: true,
+  includeSymbols: false,
+  trialCount: 1,
+};
 
 describe("levenshteinDistance", () => {
   it("handles exact matches", () => {
@@ -36,7 +51,10 @@ describe("trialsToCsv", () => {
   it("serializes one row per trial", () => {
     const trial: TrialRecord = {
       trialId: "trial-1",
+      sessionId: "session-1",
+      sourceMode: "mixed_case_digits",
       characterMode: "mixed_case_digits",
+      generatorConfig: { ...BASE_SETTINGS, sourceMode: "mixed_case_digits", characterMode: "mixed_case_digits" },
       target: "Abc123",
       targetFeatures: computeTargetFeatures("Abc123"),
       typed: "Abc12",
@@ -47,6 +65,7 @@ describe("trialsToCsv", () => {
       backspaceCount: 1,
       editDistance: 1,
       possiblePause: false,
+      skipped: false,
       keydownEvents: [
         {
           key: "A",
@@ -65,6 +84,8 @@ describe("trialsToCsv", () => {
 
     expect(csv.split("\n")).toHaveLength(2);
     expect(csv).toContain("trial-1");
+    expect(csv).toContain("session-1");
+    expect(csv).toContain("mixed_case_digits");
     expect(csv).toContain("mixed_case_digits");
     expect(csv).toContain('"[{""key"":""A""');
   });
@@ -84,6 +105,13 @@ describe("computeTargetFeatures", () => {
     expect(features.leftHandCount + features.rightHandCount).toBeGreaterThan(0);
     expect(features.qwertyTravelDistanceEstimate).toBeGreaterThan(0);
   });
+
+  it("includes spaces in length without counting them as symbols", () => {
+    const features = computeTargetFeatures("blue door");
+
+    expect(features.length).toBe(9);
+    expect(features.symbolCount).toBe(0);
+  });
 });
 
 describe("median", () => {
@@ -97,7 +125,9 @@ describe("median", () => {
 describe("generateWordLikeString", () => {
   it("keeps the requested length while producing a letter-heavy candidate", () => {
     const candidate = generateWordLikeString({
+      ...BASE_SETTINGS,
       generationMode: "wordLike",
+      sourceMode: "mixed_case_digits",
       characterMode: "mixed_case_digits",
       length: 12,
       includeLowercase: true,
@@ -116,7 +146,9 @@ describe("generateWordLikeString", () => {
 describe("generateEasyWordString", () => {
   it("keeps candidates lowercase with trailing digits when digits are enabled", () => {
     const candidate = generateEasyWordString({
+      ...BASE_SETTINGS,
       generationMode: "easyWord",
+      sourceMode: "pseudo_words_digits",
       characterMode: "lowercase_digits",
       length: 12,
       includeLowercase: true,
@@ -132,7 +164,9 @@ describe("generateEasyWordString", () => {
 
   it("uses only easy symbols when symbols are enabled", () => {
     const candidate = generateEasyWordString({
+      ...BASE_SETTINGS,
       generationMode: "easyWord",
+      sourceMode: "mixed_case_digits_symbols",
       characterMode: "mixed_case_digits_symbols",
       length: 12,
       includeLowercase: true,
@@ -148,7 +182,9 @@ describe("generateEasyWordString", () => {
 
   it("uses a single leading uppercase letter when uppercase is enabled", () => {
     const candidate = generateEasyWordString({
+      ...BASE_SETTINGS,
       generationMode: "easyWord",
+      sourceMode: "mixed_case_digits",
       characterMode: "mixed_case_digits",
       length: 12,
       includeLowercase: true,
@@ -160,5 +196,32 @@ describe("generateEasyWordString", () => {
 
     expect(candidate).toHaveLength(12);
     expect(candidate).toMatch(/^[A-Z][a-z]+\d{2}$/);
+  });
+});
+
+describe("generateTargets", () => {
+  it("generates real-word targets with spaces", () => {
+    const [target] = generateTargets({
+      ...BASE_SETTINGS,
+      sourceMode: "real_words",
+      characterMode: "lowercase",
+      includeDigits: false,
+    });
+
+    expect(target.split(" ").length).toBeGreaterThanOrEqual(2);
+    expect(target).toMatch(/^[a-z]+( [a-z]+){1,3}$/);
+  });
+
+  it("generates lowercase sentence targets without punctuation by default", () => {
+    const [target] = generateTargets({
+      ...BASE_SETTINGS,
+      sourceMode: "sentences",
+      characterMode: "lowercase",
+      sentenceMaxLength: 40,
+      includeDigits: false,
+    });
+
+    expect(target.length).toBeLessThanOrEqual(40);
+    expect(target).toMatch(/^[a-z\s]+$/);
   });
 });

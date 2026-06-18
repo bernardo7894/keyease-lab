@@ -8,14 +8,18 @@ import {
   loadTrials,
   median,
   saveTrials,
+  settingsForSourceMode,
   trialsToCsv,
 } from "./helpers";
-import type { CharacterMode, GeneratorSettings, KeydownEventRecord, TrialRecord } from "./types";
+import type { CharacterMode, GeneratorSettings, KeydownEventRecord, SourceMode, TrialRecord } from "./types";
 
 const DEFAULT_SETTINGS: GeneratorSettings = {
   generationMode: "easyWord",
+  sourceMode: "pseudo_words_digits",
   characterMode: "lowercase_digits",
   length: 12,
+  sentenceMaxLength: 36,
+  punctuationEnabled: false,
   includeLowercase: true,
   includeUppercase: false,
   includeDigits: true,
@@ -31,6 +35,7 @@ interface ActiveTrial {
 }
 
 let settings: GeneratorSettings = { ...DEFAULT_SETTINGS };
+let currentSessionId = "";
 let targets: string[] = [];
 let targetIndex = 0;
 let completedTrials: TrialRecord[] = loadTrials();
@@ -80,19 +85,13 @@ app.innerHTML = `
       <h2 id="settingsTitle">Generation Settings</h2>
       <div class="settings-grid">
         <label>
-          <span>Style</span>
-          <select id="generationModeInput">
-            <option value="easyWord" selected>Easy word + digits</option>
-            <option value="wordLike">Word-like mixed case</option>
-            <option value="random">Random</option>
-          </select>
-        </label>
-        <label>
-          <span>Character mode</span>
-          <select id="characterModeInput">
-            <option value="lowercase">Lowercase</option>
-            <option value="lowercase_digits" selected>Lowercase + digits</option>
-            <option value="mixed_case">Mixed case</option>
+          <span>Source mode</span>
+          <select id="sourceModeInput">
+            <option value="random_lowercase">Random lowercase</option>
+            <option value="pseudo_words">Pseudo words</option>
+            <option value="pseudo_words_digits" selected>Pseudo words + digits</option>
+            <option value="real_words">Real words</option>
+            <option value="sentences">Sentences</option>
             <option value="mixed_case_digits">Mixed case + digits</option>
             <option value="mixed_case_digits_symbols">Mixed case + digits + symbols</option>
           </select>
@@ -102,8 +101,16 @@ app.innerHTML = `
           <input id="lengthInput" type="number" min="1" max="64" value="${DEFAULT_SETTINGS.length}" />
         </label>
         <label>
+          <span>Sentence max length</span>
+          <input id="sentenceMaxLengthInput" type="number" min="8" max="96" value="${DEFAULT_SETTINGS.sentenceMaxLength}" />
+        </label>
+        <label>
           <span>Trials</span>
           <input id="trialCountInput" type="number" min="1" max="500" value="${DEFAULT_SETTINGS.trialCount}" />
+        </label>
+        <label class="check">
+          <input id="punctuationInput" type="checkbox" />
+          <span>Punctuation</span>
         </label>
       </div>
     </section>
@@ -136,6 +143,20 @@ app.innerHTML = `
 
     <section class="dashboard" aria-labelledby="dashboardTitle">
       <h2 id="dashboardTitle">Dashboard</h2>
+      <div class="filter-row">
+        <label>
+          <span>Session filter</span>
+          <select id="sessionFilterInput">
+            <option value="all">All sessions</option>
+          </select>
+        </label>
+        <label>
+          <span>Source filter</span>
+          <select id="sourceFilterInput">
+            <option value="all">All source modes</option>
+          </select>
+        </label>
+      </div>
       <dl class="stats-grid">
         <div><dt>Median duration</dt><dd id="dashboardMedian">None</dd></div>
         <div><dt>Success rate</dt><dd id="dashboardSuccess">None</dd></div>
@@ -154,6 +175,10 @@ app.innerHTML = `
           <h3>Average duration by characterMode</h3>
           <ol id="durationByMode"></ol>
         </section>
+        <section>
+          <h3>Comparison by sourceMode</h3>
+          <ol id="sourceModeComparison"></ol>
+        </section>
       </div>
     </section>
   </main>
@@ -167,10 +192,11 @@ const finishButton = getElement<HTMLButtonElement>("finishButton");
 const exportJsonButton = getElement<HTMLButtonElement>("exportJsonButton");
 const exportCsvButton = getElement<HTMLButtonElement>("exportCsvButton");
 const clearButton = getElement<HTMLButtonElement>("clearButton");
-const generationModeInput = getElement<HTMLSelectElement>("generationModeInput");
-const characterModeInput = getElement<HTMLSelectElement>("characterModeInput");
+const sourceModeInput = getElement<HTMLSelectElement>("sourceModeInput");
 const lengthInput = getElement<HTMLInputElement>("lengthInput");
+const sentenceMaxLengthInput = getElement<HTMLInputElement>("sentenceMaxLengthInput");
 const trialCountInput = getElement<HTMLInputElement>("trialCountInput");
+const punctuationInput = getElement<HTMLInputElement>("punctuationInput");
 const ratingPanel = getElement<HTMLElement>("ratingPanel");
 const skipRatingButton = getElement<HTMLButtonElement>("skipRatingButton");
 const currentTrialStat = getElement<HTMLElement>("currentTrialStat");
@@ -186,6 +212,9 @@ const dashboardBackspaces = getElement<HTMLElement>("dashboardBackspaces");
 const slowestTargets = getElement<HTMLOListElement>("slowestTargets");
 const errorProneTargets = getElement<HTMLOListElement>("errorProneTargets");
 const durationByMode = getElement<HTMLOListElement>("durationByMode");
+const sourceModeComparison = getElement<HTMLOListElement>("sourceModeComparison");
+const sessionFilterInput = getElement<HTMLSelectElement>("sessionFilterInput");
+const sourceFilterInput = getElement<HTMLSelectElement>("sourceFilterInput");
 
 function getElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -198,65 +227,50 @@ function getElement<T extends HTMLElement>(id: string): T {
 }
 
 function readSettings(): GeneratorSettings {
-  const characterMode = getCharacterMode();
-  const characterModeFlags = getCharacterModeFlags(characterMode);
-
-  return {
+  return settingsForSourceMode({
     generationMode: getGenerationMode(),
-    characterMode,
+    sourceMode: getSourceMode(),
+    characterMode: "lowercase_digits",
     length: clampNumber(lengthInput.valueAsNumber, 1, 64),
-    includeLowercase: characterModeFlags.includeLowercase,
-    includeUppercase: characterModeFlags.includeUppercase,
-    includeDigits: characterModeFlags.includeDigits,
-    includeSymbols: characterModeFlags.includeSymbols,
-    trialCount: clampNumber(trialCountInput.valueAsNumber, 1, 500),
-  };
-}
-
-function getCharacterMode(): CharacterMode {
-  const value = characterModeInput.value;
-
-  if (
-    value === "lowercase" ||
-    value === "lowercase_digits" ||
-    value === "mixed_case" ||
-    value === "mixed_case_digits" ||
-    value === "mixed_case_digits_symbols"
-  ) {
-    return value;
-  }
-
-  return "lowercase_digits";
-}
-
-function getCharacterModeFlags(characterMode: CharacterMode): Pick<
-  GeneratorSettings,
-  "includeLowercase" | "includeUppercase" | "includeDigits" | "includeSymbols"
-> {
-  return {
+    sentenceMaxLength: clampNumber(sentenceMaxLengthInput.valueAsNumber, 8, 96),
+    punctuationEnabled: punctuationInput.checked,
     includeLowercase: true,
-    includeUppercase:
-      characterMode === "mixed_case" ||
-      characterMode === "mixed_case_digits" ||
-      characterMode === "mixed_case_digits_symbols",
-    includeDigits:
-      characterMode === "lowercase_digits" ||
-      characterMode === "mixed_case_digits" ||
-      characterMode === "mixed_case_digits_symbols",
-    includeSymbols: characterMode === "mixed_case_digits_symbols",
-  };
+    includeUppercase: false,
+    includeDigits: true,
+    includeSymbols: false,
+    trialCount: clampNumber(trialCountInput.valueAsNumber, 1, 500),
+  });
 }
 
 function getGenerationMode(): GeneratorSettings["generationMode"] {
-  if (generationModeInput.value === "random") {
+  if (sourceModeInput.value === "random_lowercase") {
     return "random";
   }
 
-  if (generationModeInput.value === "wordLike") {
+  if (sourceModeInput.value === "mixed_case_digits" || sourceModeInput.value === "mixed_case_digits_symbols") {
+    return "easyWord";
+  }
+
+  if (sourceModeInput.value === "pseudo_words" || sourceModeInput.value === "pseudo_words_digits") {
     return "wordLike";
   }
 
   return "easyWord";
+}
+
+function getSourceMode(): SourceMode {
+  const value = sourceModeInput.value;
+  const sourceModes: SourceMode[] = [
+    "random_lowercase",
+    "pseudo_words",
+    "pseudo_words_digits",
+    "real_words",
+    "sentences",
+    "mixed_case_digits",
+    "mixed_case_digits_symbols",
+  ];
+
+  return sourceModes.includes(value as SourceMode) ? (value as SourceMode) : "pseudo_words_digits";
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -269,6 +283,7 @@ function clampNumber(value: number, min: number, max: number): number {
 
 function startSession(): void {
   settings = readSettings();
+  currentSessionId = crypto.randomUUID();
   targets = generateTargets(settings);
   currentSessionTrials = [];
   targetIndex = 0;
@@ -293,11 +308,40 @@ function setActiveTarget(target: string): void {
 }
 
 function skipString(): void {
-  if (!targets.length) {
+  if (!targets.length || !activeTrial) {
     return;
   }
 
+  storeSkippedTrial();
   moveToNextTarget();
+}
+
+function storeSkippedTrial(): void {
+  if (!activeTrial) return;
+
+  const now = Date.now();
+  const record: TrialRecord = {
+    trialId: crypto.randomUUID(),
+    sessionId: currentSessionId,
+    sourceMode: settings.sourceMode,
+    characterMode: settings.characterMode,
+    generatorConfig: settings,
+    target: activeTrial.target,
+    targetFeatures: computeTargetFeatures(activeTrial.target),
+    typed: "",
+    startedAtEpochMs: now,
+    endedAtEpochMs: now,
+    durationMs: 0,
+    success: false,
+    backspaceCount: 0,
+    editDistance: activeTrial.target.length,
+    possiblePause: false,
+    skipped: true,
+    keydownEvents: [],
+  };
+
+  completedTrials = [...completedTrials, record];
+  saveTrials(completedTrials);
 }
 
 function startTrialIfNeeded(event: KeyboardEvent): void {
@@ -337,6 +381,10 @@ function finishTrial(): void {
     return;
   }
 
+  if (activeTrial.startedAtEpochMs === null) {
+    return;
+  }
+
   const endedAtEpochMs = Date.now();
   const startedAtEpochMs = activeTrial.startedAtEpochMs ?? endedAtEpochMs;
   const typed = typingInput.value;
@@ -345,7 +393,10 @@ function finishTrial(): void {
   const durationMs = endedAtEpochMs - startedAtEpochMs;
   const record: TrialRecord = {
     trialId: crypto.randomUUID(),
+    sessionId: currentSessionId,
+    sourceMode: settings.sourceMode,
     characterMode: settings.characterMode,
+    generatorConfig: settings,
     target: activeTrial.target,
     targetFeatures: computeTargetFeatures(activeTrial.target),
     typed,
@@ -356,6 +407,7 @@ function finishTrial(): void {
     backspaceCount: activeTrial.backspaceCount,
     editDistance,
     possiblePause: currentSessionTrials.length >= 3 && sessionMedianDuration > 0 && durationMs > sessionMedianDuration * 3,
+    skipped: false,
     keydownEvents: activeTrial.keydownEvents,
   };
 
@@ -470,7 +522,8 @@ function render(): void {
 }
 
 function renderDashboard(): void {
-  const trials = completedTrials;
+  syncFilters();
+  const trials = getFilteredTrials().filter((trial) => !trial.skipped);
   const durations = trials.map((trial) => trial.durationMs);
   const successCount = trials.filter((trial) => trial.success).length;
   const backspaceTotal = trials.reduce((total, trial) => total + trial.backspaceCount, 0);
@@ -485,6 +538,36 @@ function renderDashboard(): void {
       .slice(0, 5),
   );
   durationByMode.innerHTML = renderDurationByMode(trials);
+  sourceModeComparison.innerHTML = renderSourceModeComparison(trials);
+}
+
+function syncFilters(): void {
+  const selectedSession = sessionFilterInput.value;
+  const selectedSource = sourceFilterInput.value;
+  const sessionIds = uniqueValues(completedTrials.map((trial) => trial.sessionId).filter(Boolean));
+  const sourceModes = uniqueValues(completedTrials.map((trial) => trial.sourceMode).filter(Boolean));
+
+  sessionFilterInput.innerHTML = `<option value="all">All sessions</option>${sessionIds
+    .map((sessionId) => `<option value="${escapeHtml(sessionId)}">${escapeHtml(sessionId.slice(0, 8))}</option>`)
+    .join("")}`;
+  sourceFilterInput.innerHTML = `<option value="all">All source modes</option>${sourceModes
+    .map((sourceMode) => `<option value="${escapeHtml(sourceMode)}">${escapeHtml(sourceMode)}</option>`)
+    .join("")}`;
+  sessionFilterInput.value = sessionIds.includes(selectedSession) ? selectedSession : "all";
+  sourceFilterInput.value = sourceModes.includes(selectedSource) ? selectedSource : "all";
+}
+
+function getFilteredTrials(): TrialRecord[] {
+  return completedTrials.filter((trial) => {
+    const sessionMatches = sessionFilterInput.value === "all" || trial.sessionId === sessionFilterInput.value;
+    const sourceMatches = sourceFilterInput.value === "all" || trial.sourceMode === sourceFilterInput.value;
+
+    return sessionMatches && sourceMatches;
+  });
+}
+
+function uniqueValues(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 function renderTrialList(trials: TrialRecord[]): string {
@@ -521,6 +604,36 @@ function renderDurationByMode(trials: TrialRecord[]): string {
   return rows.length ? rows.join("") : "<li>None</li>";
 }
 
+function renderSourceModeComparison(trials: TrialRecord[]): string {
+  const sourceModes: SourceMode[] = [
+    "random_lowercase",
+    "pseudo_words",
+    "pseudo_words_digits",
+    "real_words",
+    "sentences",
+    "mixed_case_digits",
+    "mixed_case_digits_symbols",
+  ];
+  const rows = sourceModes
+    .map((sourceMode) => {
+      const modeTrials = trials.filter((trial) => trial.sourceMode === sourceMode);
+      if (!modeTrials.length) return "";
+
+      const durationMedian = median(modeTrials.map((trial) => trial.durationMs));
+      const msPerCharMedian = median(
+        modeTrials.map((trial) => trial.durationMs / Math.max(1, trial.targetFeatures?.length ?? trial.target.length)),
+      );
+      const successRate = (modeTrials.filter((trial) => trial.success).length / modeTrials.length) * 100;
+      const averageBackspaces = modeTrials.reduce((total, trial) => total + trial.backspaceCount, 0) / modeTrials.length;
+      const averageEditDistance = modeTrials.reduce((total, trial) => total + trial.editDistance, 0) / modeTrials.length;
+
+      return `<li><code>${sourceMode}</code> <span>${modeTrials.length} trials, ${Math.round(durationMedian)} ms med, ${Math.round(msPerCharMedian)} ms/char, ${Math.round(successRate)}% ok, ${averageBackspaces.toFixed(2)} backs, ${averageEditDistance.toFixed(2)} edits</span></li>`;
+    })
+    .filter(Boolean);
+
+  return rows.length ? rows.join("") : "<li>None</li>";
+}
+
 function renderTarget(target: string): string {
   return Array.from(target)
     .map((character) => {
@@ -538,6 +651,7 @@ function renderTarget(target: string): string {
 }
 
 function getCharacterHint(character: string): string {
+  if (character === " ") return "space";
   if (character === "0") return "zero";
   if (character === "O") return "cap O";
   if (character === "o") return "low o";
@@ -552,6 +666,10 @@ function getCharacterLabel(character: string): string {
 }
 
 function escapeHtml(value: string): string {
+  if (value === " ") {
+    return "&nbsp;";
+  }
+
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -566,6 +684,8 @@ finishButton.addEventListener("click", finishTrial);
 exportJsonButton.addEventListener("click", exportJson);
 exportCsvButton.addEventListener("click", exportCsv);
 clearButton.addEventListener("click", clearLocalData);
+sessionFilterInput.addEventListener("change", render);
+sourceFilterInput.addEventListener("change", render);
 skipRatingButton.addEventListener("click", skipPendingRating);
 ratingPanel.addEventListener("click", (event) => {
   const target = event.target;

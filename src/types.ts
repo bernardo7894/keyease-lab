@@ -1,4 +1,12 @@
 export type GenerationMode = "easyWord" | "wordLike" | "random";
+export type SourceMode =
+  | "random_lowercase"
+  | "pseudo_words"
+  | "pseudo_words_digits"
+  | "real_words"
+  | "sentences"
+  | "mixed_case_digits"
+  | "mixed_case_digits_symbols";
 export type CharacterMode =
   | "lowercase"
   | "lowercase_digits"
@@ -35,7 +43,10 @@ export interface KeydownEventRecord {
 
 export interface TrialRecord {
   trialId: string;
+  sessionId: string;
+  sourceMode: SourceMode;
   characterMode: CharacterMode;
+  generatorConfig: GeneratorSettings;
   target: string;
   targetFeatures: TargetFeatures;
   typed: string;
@@ -47,13 +58,17 @@ export interface TrialRecord {
   editDistance: number;
   subjectiveDifficulty?: number;
   possiblePause: boolean;
+  skipped: boolean;
   keydownEvents: KeydownEventRecord[];
 }
 
 export interface GeneratorSettings {
   generationMode: GenerationMode;
+  sourceMode: SourceMode;
   characterMode: CharacterMode;
   length: number;
+  sentenceMaxLength: number;
+  punctuationEnabled: boolean;
   includeLowercase: boolean;
   includeUppercase: boolean;
   includeDigits: boolean;

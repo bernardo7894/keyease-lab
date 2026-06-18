@@ -1,4 +1,5 @@
-import type { GeneratorSettings, TargetFeatures, TrialRecord } from "./types";
+import { COMMON_ENGLISH_WORDS, ENGLISH_SENTENCE_SNIPPETS, PORTUGUESE_SENTENCE_SNIPPETS } from "./corpus";
+import type { CharacterMode, GeneratorSettings, SourceMode, TargetFeatures, TrialRecord } from "./types";
 
 const LOWERCASE = "abcdefghijklmnopqrstuvwxyz";
 const UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -91,6 +92,27 @@ export function buildAlphabet(settings: GeneratorSettings): string {
   return alphabet || LOWERCASE;
 }
 
+export function characterModeForSourceMode(sourceMode: SourceMode): CharacterMode {
+  if (sourceMode === "mixed_case_digits_symbols") return "mixed_case_digits_symbols";
+  if (sourceMode === "mixed_case_digits") return "mixed_case_digits";
+  if (sourceMode === "pseudo_words_digits") return "lowercase_digits";
+
+  return "lowercase";
+}
+
+export function settingsForSourceMode(settings: GeneratorSettings): GeneratorSettings {
+  const characterMode = characterModeForSourceMode(settings.sourceMode);
+
+  return {
+    ...settings,
+    characterMode,
+    includeLowercase: true,
+    includeUppercase: characterMode.startsWith("mixed_case"),
+    includeDigits: characterMode.endsWith("digits") || characterMode.endsWith("digits_symbols"),
+    includeSymbols: characterMode.endsWith("symbols"),
+  };
+}
+
 export function generateRandomString(length: number, alphabet: string): string {
   const safeLength = Math.max(1, Math.floor(length));
   const randomValues = new Uint32Array(safeLength);
@@ -100,16 +122,51 @@ export function generateRandomString(length: number, alphabet: string): string {
 }
 
 export function generateTargets(settings: GeneratorSettings): string[] {
-  const alphabet = buildAlphabet(settings);
+  const resolvedSettings = settingsForSourceMode(settings);
+  const alphabet = buildAlphabet(resolvedSettings);
   const count = Math.max(1, Math.floor(settings.trialCount));
 
-  return Array.from({ length: count }, () =>
-    settings.generationMode === "easyWord"
-      ? generateEasyWordString(settings)
-      : settings.generationMode === "wordLike"
-        ? generateWordLikeString(settings)
-        : generateRandomString(settings.length, alphabet),
-  );
+  return Array.from({ length: count }, () => generateTarget(resolvedSettings, alphabet));
+}
+
+function generateTarget(settings: GeneratorSettings, alphabet: string): string {
+  switch (settings.sourceMode) {
+    case "random_lowercase":
+      return generateRandomString(settings.length, LOWERCASE);
+    case "pseudo_words":
+      return generateWordCore(settings.length);
+    case "pseudo_words_digits":
+      return generateEasyWordString(settings);
+    case "real_words":
+      return generateRealWordsTarget();
+    case "sentences":
+      return generateSentenceTarget(settings);
+    case "mixed_case_digits":
+      return generateEasyWordString(settings);
+    case "mixed_case_digits_symbols":
+      return generateEasyWordString(settings);
+    default:
+      return generateRandomString(settings.length, alphabet);
+  }
+}
+
+function generateRealWordsTarget(): string {
+  const wordCount = 2 + randomInteger(3);
+  return Array.from({ length: wordCount }, () => randomItem(COMMON_ENGLISH_WORDS)).join(" ");
+}
+
+function generateSentenceTarget(settings: GeneratorSettings): string {
+  const corpus = [...ENGLISH_SENTENCE_SNIPPETS, ...PORTUGUESE_SENTENCE_SNIPPETS];
+  const maxLength = Math.max(8, Math.floor(settings.sentenceMaxLength));
+  const candidates = corpus.map((snippet) => normalizeSnippet(snippet, settings)).filter((snippet) => snippet.length <= maxLength);
+
+  return randomItem(candidates.length ? candidates : corpus.map((snippet) => normalizeSnippet(snippet, settings))).slice(0, maxLength);
+}
+
+function normalizeSnippet(snippet: string, settings: GeneratorSettings): string {
+  const normalized = snippet.toLowerCase();
+
+  return settings.punctuationEnabled ? normalized : normalized.replace(/[^\p{L}\p{N}\s]/gu, "");
 }
 
 export function generateEasyWordString(settings: GeneratorSettings): string {
@@ -247,7 +304,7 @@ export function computeTargetFeatures(target: string): TargetFeatures {
     if (/[a-z]/.test(character)) lowercaseCount += 1;
     else if (/[A-Z]/.test(character)) uppercaseCount += 1;
     else if (/\d/.test(character)) digitCount += 1;
-    else symbolCount += 1;
+    else if (!/\s/.test(character)) symbolCount += 1;
 
     if (/[A-Z]/.test(character) && !inUppercaseRun) {
       uppercaseRunCount += 1;
@@ -318,6 +375,8 @@ export function csvEscape(value: unknown): string {
 export function trialsToCsv(trials: TrialRecord[]): string {
   const headers = [
     "trialId",
+    "sessionId",
+    "sourceMode",
     "target",
     "typed",
     "startedAtEpochMs",
@@ -328,7 +387,9 @@ export function trialsToCsv(trials: TrialRecord[]): string {
     "editDistance",
     "subjectiveDifficulty",
     "possiblePause",
+    "skipped",
     "characterMode",
+    "generatorConfig",
     "targetFeatures",
     "keydownEvents",
   ];
@@ -336,6 +397,8 @@ export function trialsToCsv(trials: TrialRecord[]): string {
   const rows = trials.map((trial) =>
     [
       trial.trialId,
+      trial.sessionId ?? "",
+      trial.sourceMode ?? "",
       trial.target,
       trial.typed,
       trial.startedAtEpochMs,
@@ -346,7 +409,9 @@ export function trialsToCsv(trials: TrialRecord[]): string {
       trial.editDistance,
       trial.subjectiveDifficulty ?? "",
       trial.possiblePause ?? false,
+      trial.skipped ?? false,
       trial.characterMode ?? "",
+      JSON.stringify(trial.generatorConfig ?? {}),
       JSON.stringify(trial.targetFeatures ?? {}),
       JSON.stringify(trial.keydownEvents),
     ]
