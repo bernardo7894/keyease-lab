@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+import { csvEscape, levenshteinDistance, trialsToCsv } from "./helpers";
+import type { TrialRecord } from "./types";
+
+describe("levenshteinDistance", () => {
+  it("handles exact matches", () => {
+    expect(levenshteinDistance("abc123", "abc123")).toBe(0);
+  });
+
+  it("counts insertions, deletions, and substitutions", () => {
+    expect(levenshteinDistance("kitten", "sitting")).toBe(3);
+    expect(levenshteinDistance("abc", "ab")).toBe(1);
+    expect(levenshteinDistance("", "test")).toBe(4);
+  });
+});
+
+describe("csvEscape", () => {
+  it("escapes commas, quotes, and newlines", () => {
+    expect(csvEscape('a,"b"\nc')).toBe('"a,""b""\nc"');
+  });
+
+  it("leaves simple fields unquoted", () => {
+    expect(csvEscape("abc123")).toBe("abc123");
+  });
+});
+
+describe("trialsToCsv", () => {
+  it("serializes one row per trial", () => {
+    const trial: TrialRecord = {
+      trialId: "trial-1",
+      target: "Abc123",
+      typed: "Abc12",
+      startedAtEpochMs: 100,
+      endedAtEpochMs: 250,
+      durationMs: 150,
+      success: false,
+      backspaceCount: 1,
+      editDistance: 1,
+      keydownEvents: [
+        {
+          key: "A",
+          code: "KeyA",
+          timestampMs: 100,
+          relativeTimestampMs: 0,
+          altKey: false,
+          ctrlKey: false,
+          shiftKey: true,
+          metaKey: false,
+        },
+      ],
+    };
+
+    const csv = trialsToCsv([trial]);
+
+    expect(csv.split("\n")).toHaveLength(2);
+    expect(csv).toContain("trial-1");
+    expect(csv).toContain('"[{""key"":""A""');
+  });
+});
